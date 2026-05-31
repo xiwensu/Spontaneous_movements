@@ -2,21 +2,29 @@
 
 # IMU Spontaneous Movement Bout Detection
 
-This repository contains code for detecting spontaneous upper-limb movement bouts from infant wrist-worn IMU data.
+This repository contains code for detecting spontaneous upper-limb movement bouts from infant wrist-worn IMU data. Algorithm adapted from Trujillo-Priego et al. (2017).
 
 ## Overview
 
 The pipeline:
 1. Loads raw accelerometer and gyroscope files.
 2. Converts units.
+    - Acceleration: g → m/s²
+    - Angular velocity: deg/s → rad/s
 3. Computes signal magnitude.
 4. Identifies synchronization tap peaks.
 5. Trims the recording to the analysis window.
-6. Applies a 31-point moving average.
-7. Detects movement candidate points using acceleration and gyroscope thresholds.
-8. Identifies overlapping acceleration and gyroscope activity.
-9. Groups detected points into movement bouts.
-10. Computes session-level movement metrics.
+6. Detrend signal by subtracting the median.
+7. Full-wave rectify signal.
+8. Apply moving average smoothing (31 samples).
+9. Estimate individualized acceleration threshold.
+10. Estimate individualized angular velocity threshold.
+11. Identify time points exceeding both thresholds.
+12. Merge adjacent detections into movement bouts.
+13. Calculate bout metrics:
+   - Mean duration
+   - Total movement time
+   - Movement proportion
 
 ## Repository structure
 

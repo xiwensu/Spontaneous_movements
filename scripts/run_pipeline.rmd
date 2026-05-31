@@ -1,0 +1,172 @@
+---
+title: "run_pipeline"
+output: html_document
+date: "2026-05-26"
+---
+
+```{r}
+library(readr)
+library(dplyr)
+library(data.table)
+library(stringr)
+library(TTR)
+library(ggpmisc)
+
+# -----------------------------
+# Parameters
+# -----------------------------
+
+sma_window <- 31          # about 0.5 s at 62 Hz
+bout_gap_threshold <- 0.5 # split bouts if gap >= 0.5 s
+
+accel_general_rejection <- 1.0   # m/s^2
+gyro_general_rejection  <- 0.32  # rad/s
+
+gravity_constant <- 9.80665
+deg_to_rad <- pi / 180
+
+# -----------------------------
+# Helper functions
+# -----------------------------
+
+compute_magnitude <- function(df, sensor = c("accel", "gyro")) {
+  sensor <- match.arg(sensor)
+
+  time <- df$`Timestamp (microseconds)` / 1e6
+
+  if (sensor == "accel") {
+    x <- df$`Accel X (g)` * gravity_constant
+    y <- df$`Accel Y (g)` * gravity_constant
+    z <- df$`Accel Z (g)` * gravity_constant
+  } else {
+    x <- df$`Gyro X (°/s)` * deg_to_rad
+    y <- df$`Gyro Y (°/s)` * deg_to_rad
+    z <- df$`Gyro Z (°/s)` * deg_to_rad
+  }
+
+  df %>%
+    mutate(
+      times = time - min(time),
+      mag = sqrt(x^2 + y^2 + z^2),
+      id = row_number()
+    )
+}
+
+trim_after_sync_peak <- function(df, t1, t2) {
+  tap_window <- df %>%
+    filter(times >= t1, times <= t2)
+
+  peak_row <- tap_window$id[which.max(tap_window$mag)]
+
+  df %>%
+    filter(id > peak_row) %>%
+    mutate(times = times - min(times))
+}
+
+trim_session <- function(df, start_time, end_time) {
+  df %>%
+    filter(times >= start_time, times <= end_time) %>%
+    mutate(
+      mag_d = mag - median(mag, na.rm = TRUE)
+    )
+}
+
+estimate_accel_threshold <- function(df) {
+  rectified <- abs(df$mag_d)
+  smoothed <- TTR::SMA(rectified, n = sma_window)
+
+  peak_index <- ggpmisc:::find_peaks(smoothed)
+  peak_values <- smoothed[peak_index]
+
+  peak_values <- peak_values[peak_values >= accel_general_rejection]
+
+  threshold <- mean(peak_values, na.rm = TRUE) -
+    0.5 * sd(peak_values, na.rm = TRUE)
+
+  return(threshold)
+}
+
+estimate_gyro_threshold <- function(df) {
+  rectified <- abs(df$mag_d)
+  smoothed <- TTR::SMA(rectified, n = sma_window)
+
+  peak_index <- ggpmisc:::find_peaks(smoothed)
+  peak_values <- smoothed[peak_index]
+
+  peak_values <- peak_values[peak_values >= gyro_general_rejection]
+
+  threshold <- mean(peak_values, na.rm = TRUE) -
+    0.5 * sd(peak_values, na.rm = TRUE)
+
+  return(threshold)
+}
+
+detect_candidate_points <- function(accel_df, gyro_df) {
+  accel_threshold <- estimate_accel_threshold(accel_df)
+  gyro_threshold <- estimate_gyro_threshold(gyro_df)
+
+  accel_detected <- accel_df %>%
+    mutate(
+      times_round = round(times, 2),
+      accel_above = mag_d > accel_threshold | mag_d < -accel_threshold
+    ) %>%
+    filter(accel_above) %>%
+    select(times_round)
+
+  gyro_detected <- gyro_df %>%
+    mutate(
+      times_round = round(times, 2),
+      gyro_above = mag_d > gyro_threshold | mag_d < -gyro_threshold
+    ) %>%
+    filter(gyro_above) %>%
+    select(times_round)
+
+  overlap <- inner_join(accel_detected, gyro_detected, by = "times_round") %>%
+    distinct(times_round) %>%
+    arrange(times_round)
+
+  list(
+    overlap = overlap,
+    accel_threshold = accel_threshold,
+    gyro_threshold = gyro_threshold
+  )
+}
+
+extract_bouts <- function(overlap_df) {
+  if (nrow(overlap_df) == 0) {
+    return(data.frame(
+      start_time = numeric(),
+      end_time = numeric(),
+      duration = numeric()
+    ))
+  }
+
+  bouts <- as.data.table(overlap_df)
+  setnames(bouts, "times_round", "times")
+
+  bouts[, time_previous := shift(times)]
+  bouts[, gap := times - time_previous]
+  bouts[is.na(gap), gap := Inf]
+
+  bouts[, bout_id := cumsum(gap >= bout_gap_threshold)]
+
+  bout_summary <- bouts[, .(
+    start_time = min(times),
+    end_time = max(times),
+    duration = max(times) - min(times)
+  ), by = bout_id]
+
+  as.data.frame(bout_summary)
+}
+
+summarize_bouts <- function(bouts, session_duration) {
+  data.frame(
+    n_bouts = nrow(bouts),
+    mean_duration = mean(bouts$duration, na.rm = TRUE),
+    sd_duration = sd(bouts$duration, na.rm = TRUE),
+    total_movement_time = sum(bouts$duration, na.rm = TRUE),
+    movement_time_proportion = sum(bouts$duration, na.rm = TRUE) / session_duration
+  )
+}
+```
+
