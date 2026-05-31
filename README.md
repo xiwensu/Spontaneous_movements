@@ -29,8 +29,6 @@ The pipeline:
 ## Repository structure
 
 - `scripts/`: runnable analysis scripts
-- `data_example/`: example input data
-- `output_example/`: example output files
 - `docs/`: method notes and workflow documentation
 - `archive/`: original development scripts
 
@@ -41,3 +39,8 @@ The pipeline:
 - Mean bout duration
 - Total movement time
 - Movement time proportion
+
+## Citation
+Trujillo-Priego, I. A., Lane, C. J., Vanderbilt, D. L., Deng, W., Loeb, G. E., Shida, J., & Smith, B. A. (2017).
+
+Development of a wearable sensor algorithm to detect the quantity and kinematic characteristics of infant arm movement bouts produced across a full day in the natural environment. Technologies, 5(3), 39. https://doi.org/10.3390/technologies5030039
