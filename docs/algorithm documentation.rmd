@@ -1,0 +1,123 @@
+---
+title: "Algorithm description"
+output: html_document
+date: "2026-05-26"
+---
+# IMU-Based Spontaneous Movement Bout Detection
+
+## Overview
+
+This repository implements an IMU-based spontaneous movement detection pipeline for infant arm movement analysis. The algorithm is based on the approach described by Trujillo-Priego et al. (2017) and processes synchronized accelerometer and gyroscope recordings to identify movement bouts and calculate summary movement metrics.
+
+## Status
+
+Current repository version: work in progress
+The implementation is being compared against the original laboratory pipeline used in previous validation analyses.
+
+## Input Data
+
+Raw IMU recordings are collected from bilateral wrist-mounted sensors.
+
+Required files:
+
+- Accelerometer data (`accel.csv`)
+- Gyroscope data (`gyro.csv`)
+- Timing spreadsheet containing:
+  - Synchronization tap window (T1–T2)
+  - Analysis start time
+  - Analysis end time
+
+## Processing Pipeline
+
+### Step 1. Unit Conversion
+
+Accelerometer signals are converted from:
+
+- g → m/s²
+
+Gyroscope signals are converted from:
+
+- degrees/s → radians/s
+
+### Step 2. Signal Magnitude Calculation
+
+Resultant magnitude is computed from the three sensor axes:
+
+Acceleration magnitude:sqrt(ax² + ay² + az²)
+Angular velocity magnitude:sqrt(gx² + gy² + gz²)
+
+### Step 3. Synchronization Alignment
+
+A manually identified synchronization tap is located within a predefined time window.
+
+The maximum magnitude within the tap window is used as the synchronization reference point.
+
+All samples prior to the synchronization peak are removed.
+
+### Step 4. Session Trimming
+
+Signals are trimmed to the predefined analysis window.
+
+### Step 5. Detrending
+
+The median magnitude is subtracted from each signal:mag_d = mag − median(mag)
+
+### Step 6. Threshold Estimation
+
+#### Acceleration
+
+The detrended acceleration signal is:
+
+1. Full-wave rectified
+2. Smoothed using a moving average filter (31 samples)
+
+Local maxima greater than 1.0 m/s² are identified.
+
+The individualized acceleration threshold is calculated as:threshold_accel = mean(local maxima) − 0.5 × SD(local maxima)
+
+#### Angular Velocity
+
+The detrended angular velocity signal is:
+
+1. Full-wave rectified
+2. Smoothed using a moving average filter (31 samples)
+
+Local maxima greater than 0.32 rad/s are identified.
+
+The individualized angular velocity threshold is calculated as:threshold_gyro = mean(local maxima) − 0.5 × SD(local maxima)
+
+### Step 7. Candidate Movement Detection
+
+A time point is considered active when:
+
+Acceleration exceeds the individualized acceleration threshold
+
+AND
+
+Angular velocity exceeds the individualized angular velocity threshold.
+
+### Step 8. Bout Construction
+
+Adjacent active time points are merged into movement bouts.
+
+A new bout is created whenever the gap between active samples is ≥ 0.5 seconds.
+
+### Step 9. Summary Metrics
+
+For each recording:
+
+- Number of bouts
+- Mean bout duration
+- Standard deviation of bout duration
+- Total movement time
+- Movement time proportion
+
+where:movement proportion = total movement time / session duration
+
+## Output
+
+The pipeline generates:
+
+- Bout-level movement files
+- Session-level summary statistics
+- Movement duration metrics
